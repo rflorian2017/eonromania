@@ -1,0 +1,113 @@
+{
+  "title": "E·ON România",
+
+  "config": {
+    "flow_title": "E·ON România",
+
+    "step": {
+      "user": {
+        "title": "Connect to E·ON Myline account",
+        "description": "Enter your E·ON Myline email and password. Contracts will be discovered automatically.",
+        "data": {
+          "username": "Email address",
+          "password": "Password",
+          "update_interval": "Update interval (seconds)"
+        }
+      },
+
+      "mfa": {
+        "title": "Two-Factor Authentication",
+        "description": "A verification code has been sent via {mfa_type} to {mfa_recipient}. Enter the code to continue.",
+        "data": {
+          "code": "Verification code"
+        }
+      },
+
+      "select_contracts": {
+        "title": "Select contracts",
+        "description": "We found contracts in your account. Select the contracts you want to monitor.",
+        "data": {
+          "select_all": "Select all contracts",
+          "selected_contracts": "Available contracts"
+        }
+      }
+    },
+
+    "error": {
+      "auth_failed": "Authentication failed. Please check your email and password.",
+      "no_data": "Authentication was successful, but no contracts were found for this account.",
+      "no_contract_selected": "Please select at least one contract to continue.",
+      "mfa_failed": "The verification code is incorrect or has expired. Please try again.",
+      "mfa_invalid_code": "Please enter the verification code."
+    },
+
+    "abort": {
+      "already_configured": "This E·ON account is already configured."
+    }
+  },
+
+  "options": {
+    "flow_title": "E·ON România settings",
+
+    "step": {
+      "init": {
+        "title": "E·ON România Settings",
+        "description": "Select the category to manage",
+        "menu_options": {
+          "settings": "Account Settings",
+          "licenta": "License"
+        }
+      },
+
+      "settings": {
+        "title": "Account settings",
+        "description": "Update your credentials and refresh interval. After saving, you will be able to reselect contracts.",
+        "data": {
+          "username": "Email address",
+          "password": "Password",
+          "update_interval": "Update interval (seconds)"
+        }
+      },
+
+      "licenta": {
+        "title": "E·ON România License",
+        "description": "{license_status}\n\nEnter your license key to activate or renew the integration.",
+        "data": {
+          "license_key": "License Key"
+        }
+      },
+
+      "mfa": {
+        "title": "Two-Factor Authentication",
+        "description": "A verification code has been sent via {mfa_type} to {mfa_recipient}. Enter the code to continue.",
+        "data": {
+          "code": "Verification code"
+        }
+      },
+
+      "select_contracts": {
+        "title": "Change monitored contracts",
+        "description": "Select the contracts you want to monitor. Unselect those you no longer want to track.",
+        "data": {
+          "select_all": "Select all contracts",
+          "selected_contracts": "Available contracts"
+        }
+      }
+    },
+
+    "error": {
+      "auth_failed": "Authentication failed with the provided credentials.",
+      "no_data": "No contracts were found for this account.",
+      "no_contract_selected": "Please select at least one contract.",
+      "mfa_failed": "The verification code is incorrect or has expired.",
+      "mfa_invalid_code": "Please enter the verification code.",
+      "license_key_empty": "Please enter a license key.",
+      "license_key_invalid": "Invalid license key. Check the format and try again.",
+      "license_already_used": "This license key has already been used on another installation.",
+      "license_key_expired": "This license key has expired.",
+      "license_fingerprint_mismatch": "This license key is bound to a different installation.",
+      "license_network_error": "Cannot connect to the license server. Check your internet connection.",
+      "license_server_error": "License server error. Please try again later."
+    }
+  }
+}

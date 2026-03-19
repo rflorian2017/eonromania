@@ -1,0 +1,211 @@
+{
+  "repo": "",
+  "prima_colectare": "",
+  "ultima_actualizare": "2026-03-19T06:42:15Z",
+  "zilnic": {
+    "2026-03-01": {
+      "clones_total": 2,
+      "clones_unice": 1,
+      "views_total": 9,
+      "views_unice": 2
+    },
+    "2026-03-02": {
+      "clones_total": 6,
+      "clones_unice": 5,
+      "views_total": 7,
+      "views_unice": 1
+    },
+    "2026-03-03": {
+      "clones_total": 55,
+      "clones_unice": 26,
+      "views_total": 0,
+      "views_unice": 0
+    },
+    "2026-03-04": {
+      "clones_total": 226,
+      "clones_unice": 84,
+      "views_total": 6,
+      "views_unice": 5
+    },
+    "2026-03-05": {
+      "clones_total": 225,
+      "clones_unice": 88,
+      "views_total": 30,
+      "views_unice": 9
+    },
+    "2026-03-06": {
+      "clones_total": 15,
+      "clones_unice": 8,
+      "views_total": 43,
+      "views_unice": 8
+    },
+    "2026-03-07": {
+      "clones_total": 12,
+      "clones_unice": 7,
+      "views_total": 2,
+      "views_unice": 1
+    },
+    "2026-03-08": {
+      "clones_total": 75,
+      "clones_unice": 36,
+      "views_total": 4,
+      "views_unice": 3
+    },
+    "2026-03-09": {
+      "clones_total": 166,
+      "clones_unice": 65,
+      "views_total": 32,
+      "views_unice": 9
+    },
+    "2026-03-10": {
+      "clones_total": 14,
+      "clones_unice": 7,
+      "views_total": 19,
+      "views_unice": 3
+    },
+    "2026-03-11": {
+      "clones_total": 16,
+      "clones_unice": 10,
+      "views_total": 4,
+      "views_unice": 3
+    },
+    "2026-03-12": {
+      "clones_total": 14,
+      "clones_unice": 8,
+      "views_total": 2,
+      "views_unice": 2
+    },
+    "2026-03-13": {
+      "clones_total": 23,
+      "clones_unice": 10,
+      "views_total": 3,
+      "views_unice": 1
+    },
+    "2026-03-14": {
+      "clones_total": 51,
+      "clones_unice": 18,
+      "views_total": 5,
+      "views_unice": 4
+    },
+    "2026-03-15": {
+      "stars": 54,
+      "forks": 5,
+      "watchers": 3,
+      "open_issues": 0,
+      "referrers": [
+        {
+          "sursa": "Google",
+          "vizite": 27,
+          "vizitatori_unici": 6
+        },
+        {
+          "sursa": "github.com",
+          "vizite": 18,
+          "vizitatori_unici": 8
+        }
+      ],
+      "clones_total": 173,
+      "clones_unice": 72,
+      "views_total": 12,
+      "views_unice": 4
+    },
+    "2026-03-16": {
+      "stars": 54,
+      "forks": 5,
+      "watchers": 3,
+      "open_issues": 0,
+      "referrers": [
+        {
+          "sursa": "Google",
+          "vizite": 27,
+          "vizitatori_unici": 6
+        },
+        {
+          "sursa": "github.com",
+          "vizite": 25,
+          "vizitatori_unici": 10
+        }
+      ],
+      "clones_total": 58,
+      "clones_unice": 24,
+      "views_total": 10,
+      "views_unice": 2
+    },
+    "2026-03-17": {
+      "stars": 55,
+      "forks": 5,
+      "watchers": 3,
+      "open_issues": 0,
+      "referrers": [
+        {
+          "sursa": "github.com",
+          "vizite": 31,
+          "vizitatori_unici": 11
+        },
+        {
+          "sursa": "Google",
+          "vizite": 27,
+          "vizitatori_unici": 6
+        }
+      ],
+      "clones_total": 36,
+      "clones_unice": 12,
+      "views_total": 6,
+      "views_unice": 4
+    },
+    "2026-03-18": {
+      "stars": 55,
+      "forks": 5,
+      "watchers": 3,
+      "open_issues": 0,
+      "referrers": [
+        {
+          "sursa": "github.com",
+          "vizite": 35,
+          "vizitatori_unici": 13
+        },
+        {
+          "sursa": "Google",
+          "vizite": 27,
+          "vizitatori_unici": 6
+        },
+        {
+          "sursa": "chatgpt.com",
+          "vizite": 1,
+          "vizitatori_unici": 1
+        }
+      ],
+      "clones_total": 12,
+      "clones_unice": 4,
+      "views_total": 13,
+      "views_unice": 8
+    },
+    "2026-03-19": {
+      "stars": 55,
+      "forks": 5,
+      "watchers": 3,
+      "open_issues": 0,
+      "referrers": [
+        {
+          "sursa": "github.com",
+          "vizite": 38,
+          "vizitatori_unici": 16
+        },
+        {
+          "sursa": "Google",
+          "vizite": 25,
+          "vizitatori_unici": 4
+        },
+        {
+          "sursa": "chatgpt.com",
+          "vizite": 1,
+          "vizitatori_unici": 1
+        }
+      ]
+    }
+  },
+  "releases": {
+    "3.4.0": 0,
+    "3.3.0": 2
+  }
+}
