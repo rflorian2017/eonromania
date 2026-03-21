@@ -37,6 +37,17 @@ from .const import (
 from .helpers import generate_verify_hmac
 
 _LOGGER = logging.getLogger(__name__)
+_DEBUG = _LOGGER.isEnabledFor(logging.DEBUG)
+
+
+def _safe_debug_sample(data, max_len: int = 500) -> str:
+    """Returnează un sample JSON sigur pentru logging (fără serializare inutilă)."""
+    if data is None:
+        return "None"
+    try:
+        return json.dumps(data, default=str)[:max_len]
+    except Exception:  # noqa: BLE001
+        return str(data)[:max_len]
 
 
 class EonApiClient:
@@ -129,7 +140,7 @@ class EonApiClient:
         self._token_generation += 1
         _LOGGER.debug(
             "Token injectat (access=%s..., refresh=%s, gen=%s).",
-            self._access_token[:8] if self._access_token else "None",
+            f"***({len(self._access_token)}ch)" if self._access_token else "None",
             "da" if self._refresh_token else "nu",
             self._token_generation,
         )
@@ -159,23 +170,23 @@ class EonApiClient:
             "verify": verify,
         }
 
-        _LOGGER.debug("[LOGIN] Trimitere cerere: URL=%s, Payload=%s", URL_LOGIN, json.dumps(payload))
+        _LOGGER.debug("[LOGIN] Trimitere cerere: URL=%s, user=%s", URL_LOGIN, self._username)
 
         try:
             async with self._session.post(
                 URL_LOGIN, json=payload, headers=HEADERS, timeout=self._timeout
             ) as resp:
                 response_text = await resp.text()
-                _LOGGER.debug("[LOGIN] Răspuns: Status=%s, Body=%s", resp.status, response_text)
+                _LOGGER.debug("[LOGIN] Răspuns: Status=%s", resp.status)
 
                 if resp.status == 200:
-                    data = await resp.json()
-                    _LOGGER.debug(
-                        "[LOGIN] Date primite: type=%s, keys=%s, sample=%s",
-                        type(data).__name__,
-                        list(data.keys()) if isinstance(data, dict) else "N/A",
-                        json.dumps(data, default=str)[:500]
-                    )
+                    data = json.loads(response_text)
+                    if _LOGGER.isEnabledFor(logging.DEBUG):
+                        _LOGGER.debug(
+                            "[LOGIN] Date primite: type=%s, keys=%s",
+                            type(data).__name__,
+                            list(data.keys()) if isinstance(data, dict) else "N/A",
+                        )
                     self._apply_token_data(data)
                     _LOGGER.debug("[LOGIN] Token obținut cu succes (expires_in=%s).", self._expires_in)
                     return True
@@ -244,10 +255,10 @@ class EonApiClient:
                 URL_MFA_LOGIN, json=payload, headers=HEADERS, timeout=self._timeout
             ) as resp:
                 response_text = await resp.text()
-                _LOGGER.debug("[MFA] Răspuns: Status=%s, Body=%s", resp.status, response_text)
+                _LOGGER.debug("[MFA] Răspuns: Status=%s", resp.status)
 
                 if resp.status == 200:
-                    data = await resp.json()
+                    data = json.loads(response_text)
                     access_token = data.get("access_token")
                     if access_token:
                         self._apply_token_data(data)
@@ -338,24 +349,22 @@ class EonApiClient:
 
         payload = {"refreshToken": self._refresh_token}
 
-        _LOGGER.debug("[REFRESH] Trimitere cerere: URL=%s, Payload=%s", URL_REFRESH_TOKEN, json.dumps(payload))
+        _LOGGER.debug("[REFRESH] Trimitere cerere: URL=%s", URL_REFRESH_TOKEN)
 
         try:
             async with self._session.post(
                 URL_REFRESH_TOKEN, json=payload, headers=HEADERS, timeout=self._timeout
             ) as resp:
-                response_text = await resp.text()
-                _LOGGER.debug("[REFRESH] Răspuns: Status=%s, Body=%s", resp.status, response_text)
+                _LOGGER.debug("[REFRESH] Răspuns: Status=%s", resp.status)
 
                 if resp.status == 200:
                     data = await resp.json()
-                    # Debug clar pentru datele primite la refresh
-                    _LOGGER.debug(
-                        "[REFRESH] Date primite: type=%s, keys=%s, sample=%s",
-                        type(data).__name__,
-                        list(data.keys()) if isinstance(data, dict) else "N/A",
-                        json.dumps(data, default=str)[:500]
-                    )
+                    if _LOGGER.isEnabledFor(logging.DEBUG):
+                        _LOGGER.debug(
+                            "[REFRESH] Date primite: type=%s, keys=%s",
+                            type(data).__name__,
+                            list(data.keys()) if isinstance(data, dict) else "N/A",
+                        )
                     self._apply_token_data(data)
                     _LOGGER.debug("[REFRESH] Token reîmprospătat cu succes (expires_in=%s).", self._expires_in)
                     return True
@@ -397,6 +406,14 @@ class EonApiClient:
         self._id_token = None
         self._uuid = None
         self._token_obtained_at = 0.0
+
+    async def async_ensure_authenticated(self) -> bool:
+        """Metodă publică pentru asigurarea autentificării (STAB-01).
+
+        Wrapper public pentru _ensure_token_valid — folosit de coordinator
+        în loc de apelul direct la metoda privată.
+        """
+        return await self._ensure_token_valid()
 
     async def _ensure_token_valid(self) -> bool:
         """

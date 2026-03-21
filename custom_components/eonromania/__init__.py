@@ -29,7 +29,6 @@ class EonRomaniaRuntimeData:
 
 async def async_setup(hass: HomeAssistant, config: dict):
     """Configurează integrarea globală E·ON România."""
-    _LOGGER.debug("Inițializare globală integrare: %s", DOMAIN)
     return True
 
 
@@ -252,16 +251,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     _LOGGER.debug("[EonRomania] Unload platforme: %s", "OK" if unload_ok else "EȘUAT")
 
     if unload_ok:
-        # Eliminăm datele runtime ale acestei entry
-        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
-        _LOGGER.debug("[EonRomania] Entry %s eliminat din hass.data", entry.entry_id)
+        # runtime_data se curăță automat de HA la unload — nu mai facem pop manual
 
-        # Verifică dacă mai sunt entry-uri active (ignoră cheile interne)
-        chei_interne = {LICENSE_DATA_KEY, "_cancel_heartbeat"}
-        entry_ids_ramase = {
-            k for k in hass.data.get(DOMAIN, {})
-            if k not in chei_interne
-        }
+        # Verifică dacă mai sunt entry-uri active (BUG-03: folosim config_entries, nu hass.data)
+        remaining_entries = hass.config_entries.async_entries(DOMAIN)
+        # Excludem entry-ul curent (tocmai descărcat)
+        entry_ids_ramase = {e.entry_id for e in remaining_entries if e.entry_id != entry.entry_id}
 
         _LOGGER.debug(
             "[EonRomania] Entry-uri rămase după unload: %d (%s)",
@@ -323,6 +318,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         notify_data = hass.data.pop(f"{DOMAIN}_notify", None)
         if notify_data and notify_data.get("fingerprint"):
             await _send_lifecycle_event(
+                hass,
                 notify_data["fingerprint"],
                 notify_data.get("license_key", ""),
                 "integration_removed",
@@ -330,11 +326,12 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 
 async def _send_lifecycle_event(
-    fingerprint: str, license_key: str, action: str
+    hass: HomeAssistant, fingerprint: str, license_key: str, action: str
 ) -> None:
     """Trimite un eveniment lifecycle direct (fără LicenseManager).
 
     Folosit în async_remove_entry când LicenseManager nu mai există.
+    BUG-06: Folosește sesiunea partajată din HA în loc de aiohttp.ClientSession() nouă.
     """
     import hashlib
     import hmac as hmac_lib
@@ -360,23 +357,23 @@ async def _send_lifecycle_event(
     ).hexdigest()
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{LICENSE_API_URL}/notify",
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=10),
-                headers={
-                    "Content-Type": "application/json",
-                    "User-Agent": "EonRomania-HA-Integration/3.0",
-                },
-            ) as resp:
-                if resp.status == 200:
-                    result = await resp.json()
-                    if not result.get("success"):
-                        _LOGGER.warning(
-                            "[EonRomania] Server a refuzat '%s': %s",
-                            action, result.get("error"),
-                        )
+        session = async_get_clientsession(hass)
+        async with session.post(
+            f"{LICENSE_API_URL}/notify",
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=10),
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "EonRomania-HA-Integration/3.0",
+            },
+        ) as resp:
+            if resp.status == 200:
+                result = await resp.json()
+                if not result.get("success"):
+                    _LOGGER.warning(
+                        "[EonRomania] Server a refuzat '%s': %s",
+                        action, result.get("error"),
+                    )
     except Exception as err:  # noqa: BLE001
         _LOGGER.debug("[EonRomania] Nu s-a putut raporta '%s': %s", action, err)
 
@@ -402,6 +399,9 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             "select_all": False,
             "selected_contracts": [old_cod] if old_cod else [],
         }
+        # BUG-04: Păstrează token_data la migrare (evită re-autentificare cu MFA)
+        if old_data.get("token_data"):
+            new_data["token_data"] = old_data["token_data"]
 
         _LOGGER.info(
             "Migrare entry %s: v%s → v3 (cod_incasare=%s → selected_contracts).",

@@ -25,6 +25,7 @@ from typing import Any
 
 import aiohttp
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
@@ -47,17 +48,22 @@ _FP_SALT = "eOn_R0m@n1a_Ha$h_2026!zW"
 INTEGRATION = "eonmyline"
 
 # ─────────────────────────────────────────────
-# Cheia publică Ed25519 a serverului
+# Cheile publice Ed25519 ale serverului (SEC-03: suport key rotation)
 # ─────────────────────────────────────────────
-# IMPORTANT: Înlocuiește cu cheia publică reală generată pe server.
+# Lista permite rotația cheilor: adaugă cheia nouă PRIMA în listă,
+# iar la update-ul următor elimină cheia veche.
+# Verificarea încearcă fiecare cheie în ordine — prima care validează câștigă.
 # Cheia privată corespunzătoare rămâne DOAR pe server.
-# Această cheie publică permite doar VERIFICAREA semnăturilor,
-# nu și crearea lor — deci e sigură să fie în cod.
-SERVER_PUBLIC_KEY_PEM = """\
+SERVER_PUBLIC_KEYS_PEM: list[str] = [
+    # Cheia activă (primară)
+    """\
 -----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAUAZIZ1fw+b7qpq9LA47NRbHYhN8kONMxUiJyx5RHrBg=
 -----END PUBLIC KEY-----
-"""
+""",
+    # (adaugă aici chei vechi la rotație, șterge-le după ce TOȚI clienții s-au actualizat)
+]
+SERVER_PUBLIC_KEY_PEM = SERVER_PUBLIC_KEYS_PEM[0]
 
 
 # ─────────────────────────────────────────────
@@ -91,6 +97,11 @@ class LicenseManager:
         self._loaded = False
         # Token de status primit de la server (cache local)
         self._status_token: dict[str, Any] = {}
+
+    @property
+    def _session(self) -> aiohttp.ClientSession:
+        """Returnează sesiunea aiohttp partajată din Home Assistant."""
+        return async_get_clientsession(self._hass)
 
     # ─── Încărcare / Salvare ───
 
@@ -221,62 +232,70 @@ class LicenseManager:
         payload["hmac"] = self._compute_request_hmac(payload)
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{LICENSE_API_URL}/check",
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=30),
-                    headers={
-                        "Content-Type": "application/json",
-                        "User-Agent": "EonRomania-HA-Integration/3.0",
-                    },
-                ) as resp:
-                    _LOGGER.debug(
-                        "[EonRomania:License] Server /check răspuns: HTTP %d",
-                        resp.status,
-                    )
-                    result = await resp.json()
+            session = self._session
+            async with session.post(
+                f"{LICENSE_API_URL}/check",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30),
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "EonRomania-HA-Integration/3.0",
+                },
+            ) as resp:
+                _LOGGER.debug(
+                    "[EonRomania:License] Server /check răspuns: HTTP %d",
+                    resp.status,
+                )
+                result = await resp.json()
 
-                    if resp.status == 200 and "status" in result:
-                        # Verifică semnătura serverului pe token
-                        if not self._verify_token_signature(result):
-                            _LOGGER.warning(
-                                "[EonRomania:License] Semnătura token-ului de status "
-                                "e invalidă — ignor răspunsul"
-                            )
-                            return self._status_token
-
-                        # Salvează noul status token
-                        self._status_token = result
-                        self._data["status_token"] = result
-                        self._data["last_server_check"] = time.time()
-
-                        # Sincronizează license_key din răspunsul serverului
-                        # (important: serverul e sursa de adevăr pentru cheie)
-                        server_key = result.get("license_key")
-                        if server_key and self._data.get("license_key") != server_key:
-                            self._data["license_key"] = server_key
-                            _LOGGER.debug(
-                                "[EonRomania:License] license_key sincronizat "
-                                "din răspunsul /check: %s",
-                                server_key,
-                            )
-
-                        await self._async_save()
-
-                        _LOGGER.debug(
-                            "[EonRomania:License] Status actualizat de la server — %s "
-                            "(valid_until: %s)",
-                            result.get("status"),
-                            result.get("valid_until"),
+                if resp.status == 200 and "status" in result:
+                    # Verifică semnătura serverului pe token
+                    if not self._verify_token_signature(result):
+                        _LOGGER.warning(
+                            "[EonRomania:License] Semnătura token-ului de status "
+                            "e invalidă — ignor răspunsul"
                         )
-                        return result
+                        return self._status_token
 
-                    _LOGGER.warning(
-                        "[EonRomania:License] răspuns invalid de la /check — %s",
-                        result,
+                    # Salvează client_secret de la server (SEC-01/02)
+                    # Folosit ca cheie HMAC în loc de fingerprint
+                    cs = result.get("client_secret")
+                    if cs:
+                        self._data["client_secret"] = cs
+                        # Elimină din status_token (nu trebuie cached în token)
+                        result.pop("client_secret", None)
+
+                    # Salvează noul status token
+                    self._status_token = result
+                    self._data["status_token"] = result
+                    self._data["last_server_check"] = time.time()
+
+                    # Sincronizează license_key din răspunsul serverului
+                    # (important: serverul e sursa de adevăr pentru cheie)
+                    server_key = result.get("license_key")
+                    if server_key and self._data.get("license_key") != server_key:
+                        self._data["license_key"] = server_key
+                        _LOGGER.debug(
+                            "[EonRomania:License] license_key sincronizat "
+                            "din răspunsul /check: %s",
+                            server_key,
+                        )
+
+                    await self._async_save()
+
+                    _LOGGER.debug(
+                        "[EonRomania:License] Status actualizat de la server — %s "
+                        "(valid_until: %s)",
+                        result.get("status"),
+                        result.get("valid_until"),
                     )
-                    return self._status_token
+                    return result
+
+                _LOGGER.warning(
+                    "[EonRomania:License] răspuns invalid de la /check — %s",
+                    result,
+                )
+                return self._status_token
 
         except aiohttp.ClientError as err:
             _LOGGER.error(
@@ -509,9 +528,9 @@ class LicenseManager:
         payload["hmac"] = self._compute_request_hmac(payload)
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{LICENSE_API_URL}/validate",
+            session = self._session
+            async with session.post(
+                f"{LICENSE_API_URL}/validate",
                     json=payload,
                     timeout=aiohttp.ClientTimeout(total=30),
                     headers={
@@ -566,9 +585,9 @@ class LicenseManager:
         payload["hmac"] = self._compute_request_hmac(payload)
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{LICENSE_API_URL}/activate",
+            session = self._session
+            async with session.post(
+                f"{LICENSE_API_URL}/activate",
                     json=payload,
                     timeout=aiohttp.ClientTimeout(total=30),
                     headers={
@@ -687,9 +706,9 @@ class LicenseManager:
         payload["hmac"] = self._compute_request_hmac(payload)
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{LICENSE_API_URL}/deactivate",
+            session = self._session
+            async with session.post(
+                f"{LICENSE_API_URL}/deactivate",
                     json=payload,
                     timeout=aiohttp.ClientTimeout(total=30),
                     headers={
@@ -751,9 +770,9 @@ class LicenseManager:
         payload["hmac"] = self._compute_request_hmac(payload)
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{LICENSE_API_URL}/notify",
+            session = self._session
+            async with session.post(
+                f"{LICENSE_API_URL}/notify",
                     json=payload,
                     timeout=aiohttp.ClientTimeout(total=10),
                     headers={
@@ -807,6 +826,9 @@ class LicenseManager:
 
         Token-ul conține diverse câmpuri + 'signature'.
         Semnătura e calculată pe JSON-ul celorlalte câmpuri (sort_keys).
+
+        SEC-03: Încearcă toate cheile publice din SERVER_PUBLIC_KEYS_PEM
+        (suport key rotation — prima cheie care validează câștigă).
         """
         try:
             from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -820,7 +842,7 @@ class LicenseManager:
             if not signature_hex:
                 return False
 
-            signature = bytes.fromhex(signature_hex)
+            sig_bytes = bytes.fromhex(signature_hex)
 
             # Reconstituie datele semnate (fără câmpul signature)
             signed_data = {
@@ -828,15 +850,20 @@ class LicenseManager:
             }
             message = json.dumps(signed_data, sort_keys=True).encode()
 
-            public_key = load_pem_public_key(
-                SERVER_PUBLIC_KEY_PEM.encode()
-            )
-            if not isinstance(public_key, Ed25519PublicKey):
-                _LOGGER.error("[EonRomania:License] cheia publică nu e Ed25519")
-                return False
+            for key_pem in SERVER_PUBLIC_KEYS_PEM:
+                try:
+                    public_key = load_pem_public_key(key_pem.encode())
+                    if not isinstance(public_key, Ed25519PublicKey):
+                        continue
+                    public_key.verify(sig_bytes, message)
+                    return True
+                except Exception:  # noqa: BLE001
+                    continue
 
-            public_key.verify(signature, message)
-            return True
+            _LOGGER.warning(
+                "[EonRomania:License] nicio cheie publică nu a validat semnătura"
+            )
+            return False
 
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug(
@@ -847,13 +874,16 @@ class LicenseManager:
     def _compute_request_hmac(self, payload: dict[str, Any]) -> str:
         """Calculează HMAC-SHA256 pentru integritatea request-ului.
 
-        Cheia HMAC = fingerprint (unic per instalare).
-        Mesajul = JSON al payload-ului fără câmpul 'hmac'.
+        Cheia HMAC = client_secret (de la server, unic per instalare).
+        Fallback pe fingerprint dacă client_secret nu e disponibil încă
+        (prima rulare, înainte de primul /check).
         """
         data = {k: v for k, v in payload.items() if k != "hmac"}
         msg = json.dumps(data, sort_keys=True).encode()
+        # Folosește client_secret dacă e disponibil (v3.1)
+        hmac_key = self._data.get("client_secret") or self._fingerprint
         return hmac_lib.new(
-            self._fingerprint.encode(),
+            hmac_key.encode(),
             msg,
             hashlib.sha256,
         ).hexdigest()

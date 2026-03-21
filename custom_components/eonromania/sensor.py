@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.const import UnitOfVolume, UnitOfEnergy
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, ATTRIBUTION
+from .const import DOMAIN, ATTRIBUTION, LICENSE_DATA_KEY
 from .coordinator import EonRomaniaCoordinator
 from .helpers import (
     CONVENTION_MONTH_MAPPING,
@@ -49,6 +49,15 @@ class EonRomaniaEntity(CoordinatorEntity[EonRomaniaCoordinator], SensorEntity):
         self._config_entry = config_entry
         self._cod_incasare = coordinator.cod_incasare
         self._custom_entity_id: str | None = None
+
+    @property
+    def _license_valid(self) -> bool:
+        """Verifică dacă licența este validă (STAB-02).
+
+        Dacă nu e validă, senzorii returnează 'Licență necesară'.
+        """
+        mgr = self.coordinator.hass.data.get(DOMAIN, {}).get(LICENSE_DATA_KEY)
+        return mgr.is_valid if mgr else False
 
     @property
     def entity_id(self) -> str | None:
@@ -270,6 +279,8 @@ class ContractDetailsSensor(EonRomaniaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         data = self.coordinator.data.get("contract_details") if self.coordinator.data else None
         if not data:
             return None
@@ -277,6 +288,8 @@ class ContractDetailsSensor(EonRomaniaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         if not self.coordinator.data:
             return {}
 
@@ -522,7 +535,7 @@ class ContractDetailsSensor(EonRomaniaEntity):
 class InvoiceBalanceSensor(EonRomaniaEntity):
     """Senzor pentru soldul facturii per contract."""
 
-    _attr_icon = "mdi:currency-eur"
+    _attr_icon = "mdi:cash"
     _attr_translation_key = "sold_factura"
 
     def __init__(self, coordinator, config_entry):
@@ -533,6 +546,8 @@ class InvoiceBalanceSensor(EonRomaniaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         data = self.coordinator.data.get("invoice_balance") if self.coordinator.data else None
         if not data or not isinstance(data, dict):
             return "Nu"
@@ -543,6 +558,8 @@ class InvoiceBalanceSensor(EonRomaniaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         data = self.coordinator.data.get("invoice_balance") if self.coordinator.data else None
         if not data:
             return {"attribution": ATTRIBUTION}
@@ -581,6 +598,8 @@ class InvoiceBalanceProsumSensor(EonRomaniaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         data = self.coordinator.data.get("invoice_balance_prosum") if self.coordinator.data else None
         if not data or not isinstance(data, dict):
             return "Nu"
@@ -591,6 +610,8 @@ class InvoiceBalanceProsumSensor(EonRomaniaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         data = self.coordinator.data.get("invoice_balance_prosum") if self.coordinator.data else None
         if not data or not isinstance(data, dict):
             return {"attribution": ATTRIBUTION}
@@ -629,6 +650,8 @@ class ReschedulingPlansSensor(EonRomaniaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         data = self.coordinator.data.get("rescheduling_plans") if self.coordinator.data else None
         if not data or not isinstance(data, list):
             return 0
@@ -636,6 +659,8 @@ class ReschedulingPlansSensor(EonRomaniaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         data = self.coordinator.data.get("rescheduling_plans") if self.coordinator.data else None
         if not data or not isinstance(data, list):
             return {"attribution": ATTRIBUTION}
@@ -700,6 +725,8 @@ class CitireIndexSensor(EonRomaniaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         citireindex_data = get_meter_data(
             self.coordinator.data, self._subcontract_code or self._cod_incasare,
             is_subcontract=bool(self._subcontract_code),
@@ -723,6 +750,8 @@ class CitireIndexSensor(EonRomaniaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         citireindex_data = get_meter_data(
             self.coordinator.data, self._subcontract_code or self._cod_incasare,
             is_subcontract=bool(self._subcontract_code),
@@ -811,6 +840,8 @@ class CitirePermisaSensor(EonRomaniaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         citireindex_data = get_meter_data(
             self.coordinator.data, self._subcontract_code or self._cod_incasare,
             is_subcontract=bool(self._subcontract_code),
@@ -865,6 +896,8 @@ class CitirePermisaSensor(EonRomaniaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         citireindex_data = get_meter_data(
             self.coordinator.data, self._subcontract_code or self._cod_incasare,
             is_subcontract=bool(self._subcontract_code),
@@ -938,6 +971,8 @@ class FacturaRestantaSensor(EonRomaniaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         data = self.coordinator.data.get("invoices_unpaid") if self.coordinator.data else None
         if not data or not isinstance(data, list):
             return "Nu"
@@ -945,6 +980,8 @@ class FacturaRestantaSensor(EonRomaniaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         data = self.coordinator.data.get("invoices_unpaid") if self.coordinator.data else None
         if not data or not isinstance(data, list):
             return {
@@ -992,6 +1029,8 @@ class FacturaProsumSensor(EonRomaniaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         data = self.coordinator.data.get("invoices_prosum") if self.coordinator.data else None
         if not data or not isinstance(data, list):
             balance_data = self.coordinator.data.get("invoice_balance_prosum") if self.coordinator.data else None
@@ -1003,6 +1042,8 @@ class FacturaProsumSensor(EonRomaniaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         data = self.coordinator.data.get("invoices_prosum") if self.coordinator.data else None
         if not data or not isinstance(data, list):
             return {
@@ -1066,6 +1107,8 @@ class ConventieConsumSensor(EonRomaniaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         is_collective = self.coordinator.data.get("is_collective", False) if self.coordinator.data else False
 
         if is_collective:
@@ -1102,6 +1145,8 @@ class ConventieConsumSensor(EonRomaniaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         if not self.coordinator.data:
             return {}
 
@@ -1202,6 +1247,8 @@ class ArhivaSensor(EonRomaniaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         arhiva_data = self.coordinator.data.get("meter_history", {}) if self.coordinator.data else {}
         history_list = arhiva_data.get("history", [])
         year_data = next((y for y in history_list if y.get("year") == self.year), None)
@@ -1218,6 +1265,8 @@ class ArhivaSensor(EonRomaniaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         arhiva_data = self.coordinator.data.get("meter_history", {}) if self.coordinator.data else {}
         history_list = arhiva_data.get("history", [])
         year_data = next((y for y in history_list if y.get("year") == self.year), None)
@@ -1260,10 +1309,14 @@ class ArhivaPlatiSensor(EonRomaniaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         return len(self._payments_for_year())
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         attributes = {}
         payments_list = sorted(
             self._payments_for_year(),
@@ -1317,6 +1370,8 @@ class ArhivaComparareConsumAnualGraficSensor(EonRomaniaEntity):
 
     @property
     def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
         total = sum(v["consumptionValue"] for v in self._monthly_values.values())
         return round(total, 2)
 
@@ -1326,6 +1381,8 @@ class ArhivaComparareConsumAnualGraficSensor(EonRomaniaEntity):
 
     @property
     def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
         unit = self.coordinator.data.get("um", "m3") if self.coordinator.data else "m3"
         attributes = {"attribution": ATTRIBUTION}
         attributes.update(

@@ -137,7 +137,7 @@ class EonRomaniaCoordinator(DataUpdateCoordinator):
                     "Token absent sau probabil expirat. Se asigură token valid (contract=%s).",
                     cod,
                 )
-                ok = await self.api_client._ensure_token_valid()
+                ok = await self.api_client.async_ensure_authenticated()
                 if not ok:
                     _LOGGER.warning(
                         "Autentificare eșuată la API-ul E·ON (contract=%s).", cod
