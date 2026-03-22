@@ -15,6 +15,14 @@
         }
       },
 
+      "mfa_method": {
+        "title": "Choose verification method",
+        "description": "Your account has two-factor authentication enabled. Choose how you want to receive the verification code.",
+        "data": {
+          "mfa_method": "Verification method"
+        }
+      },
+
       "mfa": {
         "title": "Two-Factor Authentication",
         "description": "A verification code has been sent via {mfa_type} to {mfa_recipient}. Enter the code to continue.",
@@ -38,7 +46,8 @@
       "no_data": "Authentication was successful, but no contracts were found for this account.",
       "no_contract_selected": "Please select at least one contract to continue.",
       "mfa_failed": "The verification code is incorrect or has expired. Please try again.",
-      "mfa_invalid_code": "Please enter the verification code."
+      "mfa_invalid_code": "Please enter the verification code.",
+      "mfa_resend_failed": "Failed to resend the verification code. Please try again."
     },
 
     "abort": {
@@ -77,6 +86,14 @@
         }
       },
 
+      "mfa_method": {
+        "title": "Choose verification method",
+        "description": "Your account has two-factor authentication enabled. Choose how you want to receive the verification code.",
+        "data": {
+          "mfa_method": "Verification method"
+        }
+      },
+
       "mfa": {
         "title": "Two-Factor Authentication",
         "description": "A verification code has been sent via {mfa_type} to {mfa_recipient}. Enter the code to continue.",
@@ -101,6 +118,7 @@
       "no_contract_selected": "Please select at least one contract.",
       "mfa_failed": "The verification code is incorrect or has expired.",
       "mfa_invalid_code": "Please enter the verification code.",
+      "mfa_resend_failed": "Failed to resend the verification code. Please try again.",
       "license_key_empty": "Please enter a license key.",
       "license_key_invalid": "Invalid license key. Check the format and try again.",
       "license_already_used": "This license key has already been used on another installation.",

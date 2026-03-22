@@ -243,10 +243,17 @@ async def async_setup_entry(
     all_sensors: list[SensorEntity] = []
 
     for cod_incasare, coordinator in coordinators.items():
-        sensors = _build_sensors_for_coordinator(coordinator, config_entry)
-        _LOGGER.debug(
-            "Se adaugă %s senzori pentru contractul %s.", len(sensors), cod_incasare,
-        )
+        if coordinator.account_only:
+            # Cont fără contracte — doar senzor date personale
+            sensors = [UserDetailsSensor(coordinator, config_entry)]
+            _LOGGER.debug(
+                "Se adaugă senzor date personale (account_only) pentru %s.", cod_incasare,
+            )
+        else:
+            sensors = _build_sensors_for_coordinator(coordinator, config_entry)
+            _LOGGER.debug(
+                "Se adaugă %s senzori pentru contractul %s.", len(sensors), cod_incasare,
+            )
         all_sensors.extend(sensors)
 
     _LOGGER.info(
@@ -260,6 +267,92 @@ async def async_setup_entry(
 # ══════════════════════════════════════════════
 # SENZORI NOI
 # ══════════════════════════════════════════════
+
+
+# ──────────────────────────────────────────────
+# UserDetailsSensor (pentru conturi fără contracte)
+# ──────────────────────────────────────────────
+class UserDetailsSensor(CoordinatorEntity[EonRomaniaCoordinator], SensorEntity):
+    """Senzor cu datele personale ale utilizatorului (pentru conturi fără contracte)."""
+
+    _attr_has_entity_name = False
+    _attr_icon = "mdi:account-circle"
+
+    def __init__(self, coordinator: EonRomaniaCoordinator, config_entry: ConfigEntry):
+        super().__init__(coordinator)
+        self._config_entry = config_entry
+        username = config_entry.data.get("username", "unknown")
+        safe_username = username.replace("@", "_").replace(".", "_")
+        self._attr_name = "Date personale E·ON"
+        self._attr_unique_id = f"{DOMAIN}_user_details_{safe_username}"
+        self._custom_entity_id: str | None = f"sensor.{DOMAIN}_{safe_username}_date_personale"
+
+    @property
+    def entity_id(self) -> str | None:
+        return self._custom_entity_id
+
+    @entity_id.setter
+    def entity_id(self, value: str) -> None:
+        self._custom_entity_id = value
+
+    @property
+    def _license_valid(self) -> bool:
+        mgr = self.coordinator.hass.data.get(DOMAIN, {}).get(LICENSE_DATA_KEY)
+        return mgr.is_valid if mgr else False
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        username = self._config_entry.data.get("username", "unknown")
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"account_{username}")},
+            name=f"E·ON România ({username})",
+            manufacturer="Ciprian Nicolae (cnecrea)",
+            model="E·ON România — Cont personal",
+            entry_type=DeviceEntryType.SERVICE,
+        )
+
+    @property
+    def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
+        data = self.coordinator.data
+        if not data:
+            return None
+        user = data.get("user_details")
+        if not user or not isinstance(user, dict):
+            return None
+        first = user.get("firstName", "")
+        last = user.get("lastName", "")
+        return f"{first} {last}".strip() or user.get("email", "Necunoscut")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        if not self._license_valid:
+            return {"eroare": "Licență necesară"}
+        data = self.coordinator.data
+        if not data:
+            return None
+        user = data.get("user_details")
+        if not user or not isinstance(user, dict):
+            return None
+
+        attrs: dict[str, Any] = {
+            "nume": user.get("firstName", ""),
+            "prenume": user.get("lastName", ""),
+            "email": user.get("email", ""),
+            "telefon_mobil": user.get("mobilePhoneNumber", ""),
+            "telefon_fix": user.get("fixPhoneNumber", ""),
+            "tip_utilizator": user.get("userType", ""),
+            "mfa_activ": user.get("secondFactorAuth", False),
+            "metoda_mfa": user.get("secondFactorAuthMethod") or "—",
+            "alerta_mfa": user.get("mfaAlert", ""),
+            "migrat": user.get("migrated", False),
+            "gdpr_afisat": user.get("showGDPR", False),
+            "wallet_activ": user.get("showWallet", False),
+            "contracte": "Niciun contract asociat",
+            "attribution": ATTRIBUTION,
+        }
+        return attrs
 
 
 # ──────────────────────────────────────────────

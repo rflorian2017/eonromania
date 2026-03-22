@@ -36,6 +36,13 @@ async def async_setup_entry(
     entities: list[ButtonEntity] = []
 
     for cod_incasare, coordinator in config_entry.runtime_data.coordinators.items():
+        # Cont fără contracte → nu are contoare, nu se creează butoane
+        if coordinator.account_only:
+            _LOGGER.debug(
+                "Coordinator account_only (%s) — nu se creează butoane.", cod_incasare,
+            )
+            continue
+
         if coordinator.is_collective:
             # ── Contract colectiv/DUO: un buton per subcontract ──
             subcontracts_list = coordinator.data.get("subcontracts") if coordinator.data else None

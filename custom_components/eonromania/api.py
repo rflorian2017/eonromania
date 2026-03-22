@@ -33,6 +33,7 @@ from .const import (
     URL_PAYMENT_LIST,
     URL_REFRESH_TOKEN,
     URL_RESCHEDULING_PLANS,
+    URL_USER_DETAILS,
 )
 from .helpers import generate_verify_hmac
 
@@ -75,6 +76,14 @@ class EonApiClient:
         # MFA state (setat de async_login când MFA e necesar)
         self._mfa_data: dict | None = None
 
+        # ── MFA guard ──
+        # Când login-ul cere MFA în background (nu în config_flow),
+        # blocăm orice re-încercare de login pentru a preveni:
+        # 1. Flood de email-uri MFA la fiecare ciclu de update
+        # 2. Login-uri paralele când mai multe request-uri primesc 401 simultan
+        # Se resetează la inject_token() (după reconfigurare prin UI)
+        self._mfa_blocked: bool = False
+
     # ──────────────────────────────────────────
     # Proprietăți publice
     # ──────────────────────────────────────────
@@ -99,6 +108,17 @@ class EonApiClient:
         """Returnează datele MFA (uuid, type, recipient, etc.) sau None."""
         return self._mfa_data
 
+    @property
+    def mfa_blocked(self) -> bool:
+        """True dacă login-ul e blocat din cauza MFA necesar în background."""
+        return self._mfa_blocked
+
+    def clear_mfa_block(self) -> None:
+        """Resetează blocajul MFA (apelat după reconfigurare prin UI)."""
+        self._mfa_blocked = False
+        self._mfa_data = None
+        _LOGGER.debug("[AUTH] Blocaj MFA resetat.")
+
     def is_token_likely_valid(self) -> bool:
         """Verifică dacă tokenul există ȘI nu a depășit durata maximă estimată."""
         if self._access_token is None:
@@ -113,6 +133,10 @@ class EonApiClient:
 
         Folosit de config_flow pentru a salva token-ul după autentificare MFA,
         astfel încât __init__.py să-l poată injecta în API client-ul coordinatorului.
+
+        Salvează și timestamp-ul real (wall clock) al obținerii token-ului,
+        astfel încât inject_token() să poată calcula corect vârsta token-ului
+        chiar și după restart HA (time.monotonic() se resetează la reboot).
         """
         if self._access_token is None:
             return None
@@ -123,12 +147,18 @@ class EonApiClient:
             "refresh_token": self._refresh_token,
             "id_token": self._id_token,
             "uuid": self._uuid,
+            "obtained_at_wallclock": time.time() - (time.monotonic() - self._token_obtained_at),
         }
 
     def inject_token(self, token_data: dict) -> None:
         """Injectează un token existent (obținut anterior, ex. din config_flow).
 
-        Setează token_obtained_at la momentul curent (monotonic).
+        Calculează vârsta reală a token-ului folosind obtained_at_wallclock
+        (wall clock salvat la export). Dacă token-ul e clar expirat,
+        is_token_likely_valid() va returna False imediat → se va face
+        refresh_token direct, fără a pierde un request cu 401.
+
+        Resetează blocajul MFA (tokenul nou vine din reconfigurare prin UI).
         """
         self._access_token = token_data.get("access_token")
         self._token_type = token_data.get("token_type", "Bearer")
@@ -136,13 +166,39 @@ class EonApiClient:
         self._refresh_token = token_data.get("refresh_token")
         self._id_token = token_data.get("id_token")
         self._uuid = token_data.get("uuid")
-        self._token_obtained_at = time.monotonic()
+
+        # Calculăm vârsta reală a token-ului
+        wallclock_obtained = token_data.get("obtained_at_wallclock")
+        if wallclock_obtained:
+            # Cât timp a trecut de când a fost obținut token-ul (secunde reale)
+            age_seconds = time.time() - wallclock_obtained
+            if age_seconds < 0:
+                age_seconds = 0  # Ceas dezordonat — tratăm ca proaspăt
+            # Setăm _token_obtained_at în trecut cu atât cât e vârsta reală
+            self._token_obtained_at = time.monotonic() - age_seconds
+            _LOGGER.debug(
+                "Token injectat cu vârstă reală: %.0fs (expires_in=%s).",
+                age_seconds, self._expires_in,
+            )
+        else:
+            # Fără wallclock (format vechi) — forțăm refresh imediat
+            # Setăm token_obtained_at la 0 → is_token_likely_valid() returnează False
+            # → _ensure_token_valid() va încerca refresh_token (fără MFA!)
+            self._token_obtained_at = 0.0
+            _LOGGER.debug(
+                "Token injectat fără wallclock (format vechi) — se va face refresh la prima cerere.",
+            )
+
         self._token_generation += 1
+        # Resetăm blocajul MFA — token-ul nou vine din config_flow cu MFA completat
+        self._mfa_blocked = False
+        self._mfa_data = None
         _LOGGER.debug(
-            "Token injectat (access=%s..., refresh=%s, gen=%s).",
+            "Token injectat (access=%s..., refresh=%s, gen=%s, valid=%s).",
             f"***({len(self._access_token)}ch)" if self._access_token else "None",
             "da" if self._refresh_token else "nu",
             self._token_generation,
+            self.is_token_likely_valid(),
         )
 
     # ──────────────────────────────────────────
@@ -422,10 +478,19 @@ class EonApiClient:
         Thread-safe: folosește _auth_lock pentru a preveni refresh-uri/login-uri
         concurente. Când mai multe request-uri paralele au nevoie de token nou,
         doar primul face refresh/login, restul reutilizează rezultatul.
+
+        Dacă MFA a fost detectat anterior în background (nu în config_flow),
+        nu mai încearcă login-ul — returnează False imediat. Asta previne
+        flood-ul de email-uri MFA și login-uri repetate.
         """
         # Fast path fără lock: token deja valid
         if self.is_token_likely_valid():
             return True
+
+        # Guard: dacă MFA e blocat, nu mai încercăm nimic
+        if self._mfa_blocked:
+            _LOGGER.debug("[AUTH] Login blocat — MFA necesar. Reconfigurați integrarea din UI.")
+            return False
 
         async with self._auth_lock:
             # Double-check după ce am obținut lock-ul:
@@ -433,6 +498,11 @@ class EonApiClient:
             if self.is_token_likely_valid():
                 _LOGGER.debug("[AUTH] Token deja disponibil (obținut de alt apel concurent).")
                 return True
+
+            # Double-check MFA block (alt caller l-a setat între timp)
+            if self._mfa_blocked:
+                _LOGGER.debug("[AUTH] Login blocat de alt apel concurent — MFA necesar.")
+                return False
 
             # Încearcă refresh dacă avem refresh_token
             if self._refresh_token:
@@ -442,7 +512,50 @@ class EonApiClient:
 
             # Fallback la login complet
             self._invalidate_tokens()
-            return await self.async_login()
+            result = await self.async_login()
+
+            # Dacă login-ul a cerut MFA, blocăm orice încercare viitoare
+            # până la reconfigurare prin UI (inject_token va reseta blocajul)
+            if not result and self._mfa_data is not None:
+                self._mfa_blocked = True
+                _LOGGER.error(
+                    "[AUTH] ══════════════════════════════════════════════════════════════"
+                )
+                _LOGGER.error(
+                    "[AUTH] MFA NECESAR — Login-ul automat nu poate continua."
+                )
+                _LOGGER.error(
+                    "[AUTH] Reconfigurați integrarea E·ON România din:"
+                )
+                _LOGGER.error(
+                    "[AUTH]   Setări → Dispozitive și servicii → E·ON România → Reconfigurare"
+                )
+                _LOGGER.error(
+                    "[AUTH] NU se vor mai trimite email-uri MFA până la reconfigurare."
+                )
+                _LOGGER.error(
+                    "[AUTH] ══════════════════════════════════════════════════════════════"
+                )
+
+            return result
+
+    # ──────────────────────────────────────────
+    # Date utilizator
+    # ──────────────────────────────────────────
+
+    async def async_fetch_user_details(self):
+        """Obține datele personale ale utilizatorului autentificat (user-details)."""
+        result = await self._request_with_token(
+            method="GET",
+            url=URL_USER_DETAILS,
+            label="user_details",
+        )
+        _LOGGER.debug(
+            "[user_details] Date primite: type=%s, keys=%s",
+            type(result).__name__,
+            list(result.keys()) if isinstance(result, dict) else "N/A",
+        )
+        return result
 
     # ──────────────────────────────────────────
     # Contracte

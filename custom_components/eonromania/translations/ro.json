@@ -15,6 +15,14 @@
         }
       },
 
+      "mfa_method": {
+        "title": "Alege metoda de verificare",
+        "description": "Contul tău are autentificarea în doi pași activă. Alege cum vrei să primești codul de verificare.",
+        "data": {
+          "mfa_method": "Metoda de verificare"
+        }
+      },
+
       "mfa": {
         "title": "Autentificare în doi pași",
         "description": "Un cod de verificare a fost trimis prin {mfa_type} la {mfa_recipient}. Introduceți codul pentru a continua.",
@@ -38,7 +46,8 @@
       "no_data": "Autentificare reușită, dar nu au fost găsite contracte asociate acestui cont.",
       "no_contract_selected": "Selectați cel puțin un contract pentru a continua.",
       "mfa_failed": "Codul de verificare este incorect sau a expirat. Încercați din nou.",
-      "mfa_invalid_code": "Introduceți codul de verificare."
+      "mfa_invalid_code": "Introduceți codul de verificare.",
+      "mfa_resend_failed": "Nu s-a putut retransmite codul de verificare. Încercați din nou."
     },
 
     "abort": {
@@ -77,6 +86,14 @@
         }
       },
 
+      "mfa_method": {
+        "title": "Alege metoda de verificare",
+        "description": "Contul tău are autentificarea în doi pași activă. Alege cum vrei să primești codul de verificare.",
+        "data": {
+          "mfa_method": "Metoda de verificare"
+        }
+      },
+
       "mfa": {
         "title": "Autentificare în doi pași",
         "description": "Un cod de verificare a fost trimis prin {mfa_type} la {mfa_recipient}. Introduceți codul pentru a continua.",
@@ -101,6 +118,7 @@
       "no_contract_selected": "Selectați cel puțin un contract.",
       "mfa_failed": "Codul de verificare este incorect sau a expirat.",
       "mfa_invalid_code": "Introduceți codul de verificare.",
+      "mfa_resend_failed": "Nu s-a putut retransmite codul de verificare. Încercați din nou.",
       "license_key_empty": "Introdu o cheie de licență.",
       "license_key_invalid": "Cheie de licență invalidă. Verifică formatul și încearcă din nou.",
       "license_already_used": "Această cheie de licență a fost deja folosită pe altă instalare.",

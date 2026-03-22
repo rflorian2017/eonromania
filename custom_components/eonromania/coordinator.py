@@ -38,6 +38,7 @@ class EonRomaniaCoordinator(DataUpdateCoordinator):
         update_interval: int,
         is_collective: bool = False,
         config_entry: ConfigEntry | None = None,
+        account_only: bool = False,
     ):
         """Inițializează coordinatorul cu parametrii necesari."""
         super().__init__(
@@ -49,6 +50,7 @@ class EonRomaniaCoordinator(DataUpdateCoordinator):
         self.api_client = api_client
         self.cod_incasare = cod_incasare
         self.is_collective = is_collective
+        self.account_only = account_only
         self._config_entry = config_entry
 
         # Capabilități detectate la prima actualizare
@@ -119,7 +121,12 @@ class EonRomaniaCoordinator(DataUpdateCoordinator):
             meter_index, consumption_convention
         Heavy refresh (rar): + payments, invoices_prosum, invoice_balance_prosum,
             rescheduling_plans, graphic_consumption, meter_history
+        Account-only: doar user-details (fără contracte)
         """
+        # ── Mod account_only: doar date personale ──
+        if self.account_only:
+            return await self._async_update_data_account_only()
+
         cod = self.cod_incasare
         is_heavy = self._is_heavy_refresh
 
@@ -133,12 +140,26 @@ class EonRomaniaCoordinator(DataUpdateCoordinator):
             # Asigurăm token valid — refresh_token mai întâi, apoi login complet
             # _ensure_token_valid() folosește refresh_token (fără MFA!) ca prim pas
             if not self.api_client.is_token_likely_valid():
+                # Verificăm dacă login-ul e blocat de MFA
+                if self.api_client.mfa_blocked:
+                    _LOGGER.warning(
+                        "Login blocat — MFA necesar. Reconfigurați integrarea (contract=%s).",
+                        cod,
+                    )
+                    self._create_reauth_notification()
+                    raise UpdateFailed(
+                        "Autentificarea necesită MFA. "
+                        "Reconfigurați integrarea din Setări → Dispozitive și servicii → E·ON România."
+                    )
+
                 _LOGGER.debug(
                     "Token absent sau probabil expirat. Se asigură token valid (contract=%s).",
                     cod,
                 )
                 ok = await self.api_client.async_ensure_authenticated()
                 if not ok:
+                    if self.api_client.mfa_blocked:
+                        self._create_reauth_notification()
                     _LOGGER.warning(
                         "Autentificare eșuată la API-ul E·ON (contract=%s).", cod
                     )
@@ -430,6 +451,55 @@ class EonRomaniaCoordinator(DataUpdateCoordinator):
             "is_collective": self.is_collective,
         }
 
+    async def _async_update_data_account_only(self) -> dict:
+        """Actualizare simplificată: doar user-details (conturi fără contracte)."""
+        _LOGGER.debug(
+            "Actualizare E·ON account_only (refresh=#%s).",
+            self._refresh_counter,
+        )
+
+        try:
+            # Asigurăm token valid
+            if not self.api_client.is_token_likely_valid():
+                if self.api_client.mfa_blocked:
+                    _LOGGER.warning("Login blocat — MFA necesar (account_only).")
+                    self._create_reauth_notification()
+                    raise UpdateFailed(
+                        "Autentificarea necesită MFA. "
+                        "Reconfigurați integrarea din Setări → Dispozitive și servicii → E·ON România."
+                    )
+
+                ok = await self.api_client.async_ensure_authenticated()
+                if not ok:
+                    if self.api_client.mfa_blocked:
+                        self._create_reauth_notification()
+                    raise UpdateFailed("Nu s-a putut autentifica la API-ul E·ON.")
+
+            user_details = await self.api_client.async_fetch_user_details()
+
+        except UpdateFailed:
+            raise
+        except Exception as err:
+            _LOGGER.exception("Eroare la actualizare account_only: %s", err)
+            raise UpdateFailed("Eroare la obținerea datelor personale.") from err
+
+        if not user_details or not isinstance(user_details, dict):
+            raise UpdateFailed("Nu s-au putut obține datele personale (user-details).")
+
+        self._refresh_counter += 1
+        self._persist_token()
+
+        _LOGGER.debug(
+            "Actualizare account_only finalizată (refresh=#%s, user=%s).",
+            self._refresh_counter - 1,
+            user_details.get("email", "N/A"),
+        )
+
+        return {
+            "account_only": True,
+            "user_details": user_details,
+        }
+
     def _persist_token(self) -> None:
         """Persistă token-ul curent în config_entry.data pentru restart HA.
 
@@ -460,6 +530,29 @@ class EonRomaniaCoordinator(DataUpdateCoordinator):
             "Token persistat în config_entry (contract=%s, access=%s...).",
             self.cod_incasare,
             token_data["access_token"][:8] if token_data.get("access_token") else "None",
+        )
+
+    def _create_reauth_notification(self) -> None:
+        """Creează o notificare persistentă care cere reconfigurare MFA."""
+        from homeassistant.components import persistent_notification
+
+        notification_id = f"eonromania_reauth_{self.cod_incasare}"
+        persistent_notification.async_create(
+            self.hass,
+            message=(
+                f"Sesiunea E·ON pentru contractul **{self.cod_incasare}** a expirat "
+                f"și este necesară re-autentificarea cu cod MFA.\n\n"
+                f"Mergeți la **Setări → Dispozitive și servicii → E·ON România → "
+                f"Reconfigurare** pentru a vă re-autentifica.\n\n"
+                f"Până la reconfigurare, integrarea NU va mai încerca login "
+                f"(pentru a evita trimiterea repetată de email-uri MFA)."
+            ),
+            title="E·ON România — Autentificare necesară",
+            notification_id=notification_id,
+        )
+        _LOGGER.info(
+            "Notificare persistentă creată: reconfigurare necesară (contract=%s).",
+            self.cod_incasare,
         )
 
     @staticmethod

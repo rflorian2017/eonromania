@@ -123,7 +123,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         if old_cod:
             selected_contracts = [old_cod]
 
-    if not selected_contracts:
+    is_account_only = entry.data.get("account_only", False) or not selected_contracts
+
+    if not selected_contracts and not is_account_only:
         _LOGGER.error(
             "Nu există contracte selectate pentru %s (entry_id=%s).",
             DOMAIN, entry.entry_id,
@@ -131,8 +133,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         return False
 
     _LOGGER.debug(
-        "Contracte selectate pentru %s (entry_id=%s): %s, interval=%ss.",
-        DOMAIN, entry.entry_id, selected_contracts, update_interval,
+        "Contracte selectate pentru %s (entry_id=%s): %s, interval=%ss, account_only=%s.",
+        DOMAIN, entry.entry_id, selected_contracts, update_interval, is_account_only,
     )
 
     # Un singur client API partajat (un singur cont, un singur token)
@@ -148,6 +150,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
             "Token injectat din config_flow (proaspăt) pentru %s (entry_id=%s).",
             username, entry.entry_id,
         )
+        # Ștergem notificarea de re-autentificare (dacă există)
+        from homeassistant.components import persistent_notification
+        for contract in selected_contracts:
+            persistent_notification.async_dismiss(
+                hass, f"eonromania_reauth_{contract}"
+            )
     elif entry.data.get("token_data"):
         api_client.inject_token(entry.data["token_data"])
         _LOGGER.debug(
@@ -169,36 +177,65 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     # Creăm câte un coordinator per contract selectat
     coordinators: dict[str, EonRomaniaCoordinator] = {}
 
-    for cod in selected_contracts:
-        meta = contract_metadata.get(cod, {})
-        is_collective = meta.get("is_collective", False)
-
+    if is_account_only:
+        # Cont fără contracte — un singur coordinator pentru date personale
         coordinator = EonRomaniaCoordinator(
             hass,
             api_client=api_client,
-            cod_incasare=cod,
+            cod_incasare="__account__",
             update_interval=update_interval,
-            is_collective=is_collective,
+            is_collective=False,
             config_entry=entry,
+            account_only=True,
         )
 
         try:
             await coordinator.async_config_entry_first_refresh()
         except UpdateFailed as err:
             _LOGGER.error(
-                "Prima actualizare eșuată (entry_id=%s, contract=%s): %s",
-                entry.entry_id, cod, err,
+                "Prima actualizare eșuată pentru date personale (entry_id=%s): %s",
+                entry.entry_id, err,
             )
-            # Continuăm cu restul contractelor — nu oprim totul pentru unul
-            continue
+            return False
         except Exception as err:
             _LOGGER.exception(
-                "Eroare neașteptată la prima actualizare (entry_id=%s, contract=%s): %s",
-                entry.entry_id, cod, err,
+                "Eroare neașteptată la date personale (entry_id=%s): %s",
+                entry.entry_id, err,
             )
-            continue
+            return False
 
-        coordinators[cod] = coordinator
+        coordinators["__account__"] = coordinator
+    else:
+        for cod in selected_contracts:
+            meta = contract_metadata.get(cod, {})
+            is_collective = meta.get("is_collective", False)
+
+            coordinator = EonRomaniaCoordinator(
+                hass,
+                api_client=api_client,
+                cod_incasare=cod,
+                update_interval=update_interval,
+                is_collective=is_collective,
+                config_entry=entry,
+            )
+
+            try:
+                await coordinator.async_config_entry_first_refresh()
+            except UpdateFailed as err:
+                _LOGGER.error(
+                    "Prima actualizare eșuată (entry_id=%s, contract=%s): %s",
+                    entry.entry_id, cod, err,
+                )
+                # Continuăm cu restul contractelor — nu oprim totul pentru unul
+                continue
+            except Exception as err:
+                _LOGGER.exception(
+                    "Eroare neașteptată la prima actualizare (entry_id=%s, contract=%s): %s",
+                    entry.entry_id, cod, err,
+                )
+                continue
+
+            coordinators[cod] = coordinator
 
     if not coordinators:
         _LOGGER.error(
@@ -208,8 +245,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         return False
 
     _LOGGER.info(
-        "%s coordinatoare active din %s contracte selectate (entry_id=%s).",
-        len(coordinators), len(selected_contracts), entry.entry_id,
+        "%s coordinatoare active din %s contracte selectate (entry_id=%s, account_only=%s).",
+        len(coordinators), len(selected_contracts), entry.entry_id, is_account_only,
     )
 
     # Salvăm datele runtime

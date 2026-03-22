@@ -61,6 +61,7 @@ URL_REFRESH_TOKEN = f"{API_BASE}/users/{API_VERSION_USERS}/userauth/mobile-refre
 # ──────────────────────────────────────────────
 URL_MFA_LOGIN = f"{API_BASE}/users/{API_VERSION_USERS}/second-factor-auth/mobile-login"
 URL_MFA_RESEND = f"{API_BASE}/users/{API_VERSION_USERS}/second-factor-auth/resend-code"
+URL_USER_DETAILS = f"{API_BASE}/users/{API_VERSION_USERS}/users/user-details"
 MFA_REQUIRED_CODE = "6054"
 
 # ──────────────────────────────────────────────
