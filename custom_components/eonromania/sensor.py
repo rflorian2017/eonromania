@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.const import UnitOfVolume, UnitOfEnergy
@@ -78,6 +79,14 @@ class EonRomaniaEntity(CoordinatorEntity[EonRomaniaCoordinator], SensorEntity):
         )
 
 
+def _is_license_valid(hass: HomeAssistant) -> bool:
+    """Verifică dacă licența este validă (real-time)."""
+    mgr = hass.data.get(DOMAIN, {}).get(LICENSE_DATA_KEY)
+    if mgr is None:
+        return False
+    return mgr.is_valid
+
+
 # ──────────────────────────────────────────────
 # async_setup_entry
 # ──────────────────────────────────────────────
@@ -88,6 +97,38 @@ def _build_sensors_for_coordinator(
     """Construiește lista de senzori pentru un singur coordinator (contract)."""
     sensors: list[SensorEntity] = []
     cod_incasare = coordinator.cod_incasare
+
+    # ── Verificare licență ──
+    # Dacă nu e validă, creează DOAR LicentaNecesaraSensor
+    if not _is_license_valid(coordinator.hass):
+        # Curăță senzorii normali orfani din Entity Registry
+        registru = er.async_get(coordinator.hass)
+        licenta_uid = f"{DOMAIN}_licenta_{cod_incasare}"
+        for entry_reg in er.async_entries_for_config_entry(
+            registru, config_entry.entry_id
+        ):
+            if (
+                entry_reg.domain == "sensor"
+                and entry_reg.unique_id != licenta_uid
+            ):
+                registru.async_remove(entry_reg.entity_id)
+                _LOGGER.debug(
+                    "[EonRomania] Senzor orfan eliminat (licență expirată): %s",
+                    entry_reg.entity_id,
+                )
+        sensors.append(LicentaNecesaraSensor(coordinator, config_entry))
+        return sensors
+
+    # Curăță senzorul de licență orfan (dacă exista anterior)
+    registru = er.async_get(coordinator.hass)
+    licenta_uid = f"{DOMAIN}_licenta_{cod_incasare}"
+    entitate_licenta = registru.async_get_entity_id("sensor", DOMAIN, licenta_uid)
+    if entitate_licenta is not None:
+        registru.async_remove(entitate_licenta)
+        _LOGGER.debug(
+            "[EonRomania] Entitate LicentaNecesaraSensor orfană eliminată: %s",
+            entitate_licenta,
+        )
 
     is_collective = coordinator.is_collective
 
@@ -267,6 +308,36 @@ async def async_setup_entry(
 # ══════════════════════════════════════════════
 # SENZORI NOI
 # ══════════════════════════════════════════════
+
+
+# ──────────────────────────────────────────────
+# LicentaNecesaraSensor (pentru cazul fără licență validă)
+# ──────────────────────────────────────────────
+class LicentaNecesaraSensor(EonRomaniaEntity):
+    """Senzor care afișează 'Licență necesară' când nu există licență validă."""
+
+    _attr_icon = "mdi:license"
+    _attr_translation_key = "licenta_necesara"
+
+    def __init__(self, coordinator: EonRomaniaCoordinator, config_entry: ConfigEntry):
+        """Inițializare senzor licență necesară."""
+        super().__init__(coordinator, config_entry)
+        self._attr_name = "E·ON România"
+        self._attr_unique_id = f"{DOMAIN}_licenta_{self._cod_incasare}"
+
+    @property
+    def native_value(self):
+        """Returnează mereu 'Licență necesară'."""
+        return "Licență necesară"
+
+    @property
+    def extra_state_attributes(self):
+        """Returnează atributele de stare."""
+        return {
+            "status": "Licență necesară",
+            "info": "Integrarea necesită o licență validă pentru a funcționa.",
+            "attribution": ATTRIBUTION,
+        }
 
 
 # ──────────────────────────────────────────────
@@ -819,7 +890,7 @@ class CitireIndexSensor(EonRomaniaEntity):
     @property
     def native_value(self):
         if not self._license_valid:
-            return "Licență necesară"
+            return None
         citireindex_data = get_meter_data(
             self.coordinator.data, self._subcontract_code or self._cod_incasare,
             is_subcontract=bool(self._subcontract_code),
@@ -1464,7 +1535,7 @@ class ArhivaComparareConsumAnualGraficSensor(EonRomaniaEntity):
     @property
     def native_value(self):
         if not self._license_valid:
-            return "Licență necesară"
+            return None
         total = sum(v["consumptionValue"] for v in self._monthly_values.values())
         return round(total, 2)
 
