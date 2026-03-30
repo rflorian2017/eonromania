@@ -134,6 +134,7 @@ def _build_sensors_for_coordinator(
 
     # ── 1. Senzori de bază (mereu prezenți) ──
     sensors.append(ContractDetailsSensor(coordinator, config_entry))
+    sensors.append(AnCurentSensor(coordinator, config_entry))
     sensors.append(FacturaRestantaSensor(coordinator, config_entry))
     sensors.append(InvoiceBalanceSensor(coordinator, config_entry))
 
@@ -1391,6 +1392,34 @@ class ConventieConsumSensor(EonRomaniaEntity):
 
         attributes["attribution"] = ATTRIBUTION
         return attributes
+
+
+# ──────────────────────────────────────────────
+# AnCurentSensor
+# ──────────────────────────────────────────────
+class AnCurentSensor(EonRomaniaEntity):
+    """Senzor pentru afișarea anului curent."""
+
+    _attr_icon = "mdi:calendar-today"
+    _attr_translation_key = "an_curent"
+
+    def __init__(self, coordinator, config_entry):
+        super().__init__(coordinator, config_entry)
+        self._attr_name = "An curent"
+        self._attr_unique_id = f"{DOMAIN}_an_curent_{self._cod_incasare}"
+        self._custom_entity_id = f"sensor.{DOMAIN}_{self._cod_incasare}_an_curent"
+
+    @property
+    def native_value(self):
+        if not self._license_valid:
+            return "Licență necesară"
+        return datetime.now().year
+
+    @property
+    def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
+        return {"attribution": ATTRIBUTION}
 
 
 # ──────────────────────────────────────────────
