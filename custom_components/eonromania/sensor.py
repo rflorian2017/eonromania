@@ -212,17 +212,16 @@ def _build_sensors_for_coordinator(
                         subcontract_code=sc_code, utility_type=utility_type,
                     ))
 
-    # ── 4. ArhivaSensor (doar ultimul an) ──
+    # ── 4. ArhivaSensor (toți anii disponibili) ──
     # (nu se creează pentru contracte colective — endpoint-ul nu funcționează)
     arhiva_data = coordinator.data.get("meter_history") if coordinator.data else None
     if arhiva_data and not is_collective:
         history_list = arhiva_data.get("history", [])
-        valid_years = [item.get("year") for item in history_list if item.get("year")]
-        if valid_years:
-            max_year = max(valid_years)
-            sensors.append(ArhivaSensor(coordinator, config_entry, max_year))
+        valid_years = sorted([item.get("year") for item in history_list if item.get("year")])
+        for year in valid_years:
+            sensors.append(ArhivaSensor(coordinator, config_entry, year))
 
-    # ── 5. ArhivaPlatiSensor (doar ultimul an) ──
+    # ── 5. ArhivaPlatiSensor (toți anii disponibili) ──
     payments_list = coordinator.data.get("payments", []) if coordinator.data else []
     if payments_list:
         payments_by_year: dict[int, list] = defaultdict(list)
@@ -235,11 +234,10 @@ def _build_sensors_for_coordinator(
                 payments_by_year[year].append(payment)
             except ValueError:
                 continue
-        if payments_by_year:
-            max_year = max(payments_by_year.keys())
-            sensors.append(ArhivaPlatiSensor(coordinator, config_entry, max_year))
+        for year in sorted(payments_by_year.keys()):
+            sensors.append(ArhivaPlatiSensor(coordinator, config_entry, year))
 
-    # ── 6. ArhivaComparareConsumAnualGraficSensor (doar ultimul an) ──
+    # ── 6. ArhivaComparareConsumAnualGraficSensor (toți anii disponibili) ──
     # (nu se creează pentru contracte colective — endpoint-ul nu funcționează)
     comparareanualagrafic_data = coordinator.data.get("graphic_consumption", {}) if (coordinator.data and not is_collective) else {}
     if isinstance(comparareanualagrafic_data, dict) and "consumption" in comparareanualagrafic_data:
@@ -261,9 +259,8 @@ def _build_sensors_for_coordinator(
             for year, monthly_values in yearly_data.items()
             if any(v["consumptionValue"] > 0 or v["consumptionValueDayValue"] > 0 for v in monthly_values.values())
         }
-        if cleaned_yearly_data:
-            max_year = max(cleaned_yearly_data.keys())
-            sensors.append(ArhivaComparareConsumAnualGraficSensor(coordinator, config_entry, max_year, cleaned_yearly_data[max_year]))
+        for year in sorted(cleaned_yearly_data.keys()):
+            sensors.append(ArhivaComparareConsumAnualGraficSensor(coordinator, config_entry, year, cleaned_yearly_data[year]))
 
     return sensors
 
