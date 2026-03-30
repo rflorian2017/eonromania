@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -888,6 +888,14 @@ class CitireIndexSensor(EonRomaniaEntity):
         return UnitOfVolume.CUBIC_METERS if um.lower().startswith("m") else UnitOfEnergy.KILO_WATT_HOUR
 
     @property
+    def device_class(self) -> SensorDeviceClass:
+        return SensorDeviceClass.GAS if self.native_unit_of_measurement == UnitOfVolume.CUBIC_METERS else SensorDeviceClass.ENERGY
+
+    @property
+    def state_class(self) -> SensorStateClass:
+        return SensorStateClass.TOTAL_INCREASING
+
+    @property
     def native_value(self):
         if not self._license_valid:
             return None
@@ -1541,7 +1549,16 @@ class ArhivaComparareConsumAnualGraficSensor(EonRomaniaEntity):
 
     @property
     def native_unit_of_measurement(self):
-        return None
+        um = self.coordinator.data.get("um", "m3") if self.coordinator.data else "m3"
+        return UnitOfVolume.CUBIC_METERS if um.lower().startswith("m") else UnitOfEnergy.KILO_WATT_HOUR
+
+    @property
+    def device_class(self) -> SensorDeviceClass:
+        return SensorDeviceClass.GAS if self.native_unit_of_measurement == UnitOfVolume.CUBIC_METERS else SensorDeviceClass.ENERGY
+
+    @property
+    def state_class(self) -> SensorStateClass:
+        return SensorStateClass.TOTAL
 
     @property
     def extra_state_attributes(self):
