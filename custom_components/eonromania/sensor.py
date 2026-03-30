@@ -255,10 +255,12 @@ def _build_sensors_for_coordinator(
                 "consumptionValueDayValue": consumption_day_value,
             }
 
+        _current_year = dt_util.now().year
         cleaned_yearly_data = {
             year: monthly_values
             for year, monthly_values in yearly_data.items()
-            if any(v["consumptionValue"] > 0 or v["consumptionValueDayValue"] > 0 for v in monthly_values.values())
+            if year == _current_year
+            or any(v["consumptionValue"] > 0 or v["consumptionValueDayValue"] > 0 for v in monthly_values.values())
         }
         for year in sorted(cleaned_yearly_data.keys()):
             sensors.append(ArhivaComparareConsumAnualGraficSensor(coordinator, config_entry, year, cleaned_yearly_data[year]))
@@ -1467,31 +1469,6 @@ class AnCurentSensor(EonRomaniaEntity):
                     attributes[f"Plată {idx} factură luna {month_name}"] = f"{format_ron(payment_value)} lei"
                 attributes["Plăți efectuate"] = len(year_payments)
                 attributes["Sumă totală plăți"] = f"{format_ron(total_value)} lei"
-
-            # ── Consumption for current year ──
-            graphic_data = self.coordinator.data.get("graphic_consumption", {})
-            if isinstance(graphic_data, dict) and "consumption" in graphic_data:
-                monthly_values = {}
-                for item in graphic_data["consumption"]:
-                    if item.get("year") == current_year:
-                        month = item.get("month")
-                        consumption_value = item.get("consumptionValue")
-                        consumption_day_value = item.get("consumptionValueDayValue")
-                        if month is not None and consumption_value is not None and consumption_day_value is not None:
-                            monthly_values[month] = {
-                                "consumptionValue": consumption_value,
-                                "consumptionValueDayValue": consumption_day_value,
-                            }
-                if monthly_values:
-                    if attributes:
-                        attributes["─────"] = ""
-                    for month, value in sorted(monthly_values.items(), key=lambda item: int(item[0])):
-                        month_name = MONTHS_NUM_RO.get(int(month), "necunoscut")
-                        attributes[f"Consum lunar {month_name}"] = f"{format_number_ro(value['consumptionValue'])} {unit}"
-                    attributes["──────"] = ""
-                    for month, value in sorted(monthly_values.items(), key=lambda item: int(item[0])):
-                        month_name = MONTHS_NUM_RO.get(int(month), "necunoscut")
-                        attributes[f"Consum mediu zilnic în {month_name}"] = f"{format_number_ro(value['consumptionValueDayValue'])} {unit}"
 
         attributes["attribution"] = ATTRIBUTION
         return attributes
