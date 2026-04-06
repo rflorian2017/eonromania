@@ -1400,34 +1400,24 @@ class ConventieConsumSensor(EonRomaniaEntity):
 # AnCurentSensor
 # ──────────────────────────────────────────────
 class AnCurentSensor(EonRomaniaEntity):
-    """Senzor pentru afișarea anului curent."""
+    """Senzor pentru afișarea consumului anului curent."""
 
-    _attr_icon = "mdi:calendar-today"
     _attr_translation_key = "an_curent"
 
     def __init__(self, coordinator, config_entry):
         super().__init__(coordinator, config_entry)
-        self._attr_name = "An curent"
+        um = coordinator.data.get("um", "m3") if coordinator.data else "m3"
+        is_gaz = um.lower().startswith("m")
+        self._attr_name = "An curent → Consum gaz" if is_gaz else "An curent → Consum energie electrică"
+        self._attr_icon = "mdi:chart-bar" if is_gaz else "mdi:lightning-bolt"
         self._attr_unique_id = f"{DOMAIN}_an_curent_{self._cod_incasare}"
         self._custom_entity_id = f"sensor.{DOMAIN}_{self._cod_incasare}_an_curent"
 
-    @property
-    def native_value(self):
-        if not self._license_valid:
-            return "Licență necesară"
-        return datetime.now().year
-
-    @property
-    def extra_state_attributes(self):
-        if not self._license_valid:
-            return {"licență": "necesară"}
+    def _get_current_year_monthly_values(self) -> dict[int, dict]:
         current_year = datetime.now().year
-        attributes: dict[str, Any] = {}
-
+        monthly_values: dict[int, dict] = {}
         if self.coordinator.data:
-            unit = self.coordinator.data.get("um", "m3")
             graphic_consumption_data = self.coordinator.data.get("graphic_consumption", {})
-            monthly_values: dict[int, dict] = {}
             if isinstance(graphic_consumption_data, dict) and "consumption" in graphic_consumption_data:
                 for item in graphic_consumption_data["consumption"]:
                     year = item.get("year")
@@ -1444,22 +1434,52 @@ class AnCurentSensor(EonRomaniaEntity):
                             "consumptionValue": consumption_value,
                             "consumptionValueDayValue": consumption_day_value,
                         }
-            if monthly_values:
-                attributes.update(
-                    {
-                        f"Consum lunar {MONTHS_NUM_RO.get(month, 'necunoscut')}": f"{format_number_ro(value['consumptionValue'])} {unit}"
-                        for month, value in sorted(monthly_values.items())
-                    }
-                )
-                attributes["────"] = ""
-                attributes.update(
-                    {
-                        f"Consum mediu zilnic în {MONTHS_NUM_RO.get(month, 'necunoscut')}": f"{format_number_ro(value['consumptionValueDayValue'])} {unit}"
-                        for month, value in sorted(monthly_values.items())
-                    }
-                )
+        return monthly_values
 
-        attributes["attribution"] = ATTRIBUTION
+    @property
+    def native_value(self):
+        if not self._license_valid:
+            return None
+        monthly_values = self._get_current_year_monthly_values()
+        if not monthly_values:
+            return None
+        total = sum(v["consumptionValue"] for v in monthly_values.values())
+        return round(total, 2)
+
+    @property
+    def native_unit_of_measurement(self):
+        um = self.coordinator.data.get("um", "m3") if self.coordinator.data else "m3"
+        return UnitOfVolume.CUBIC_METERS if um.lower().startswith("m") else UnitOfEnergy.KILO_WATT_HOUR
+
+    @property
+    def device_class(self) -> SensorDeviceClass:
+        return SensorDeviceClass.GAS if self.native_unit_of_measurement == UnitOfVolume.CUBIC_METERS else SensorDeviceClass.ENERGY
+
+    @property
+    def state_class(self) -> SensorStateClass:
+        return SensorStateClass.TOTAL
+
+    @property
+    def extra_state_attributes(self):
+        if not self._license_valid:
+            return {"licență": "necesară"}
+        monthly_values = self._get_current_year_monthly_values()
+        unit = self.coordinator.data.get("um", "m3") if self.coordinator.data else "m3"
+        attributes: dict[str, Any] = {"attribution": ATTRIBUTION}
+        if monthly_values:
+            attributes.update(
+                {
+                    f"Consum lunar {MONTHS_NUM_RO.get(month, 'necunoscut')}": f"{format_number_ro(value['consumptionValue'])} {unit}"
+                    for month, value in sorted(monthly_values.items())
+                }
+            )
+            attributes["────"] = ""
+            attributes.update(
+                {
+                    f"Consum mediu zilnic în {MONTHS_NUM_RO.get(month, 'necunoscut')}": f"{format_number_ro(value['consumptionValueDayValue'])} {unit}"
+                    for month, value in sorted(monthly_values.items())
+                }
+            )
         return attributes
 
 
