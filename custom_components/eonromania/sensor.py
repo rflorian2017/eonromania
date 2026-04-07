@@ -1414,19 +1414,23 @@ class AnCurentSensor(EonRomaniaEntity):
         self._custom_entity_id = f"sensor.{DOMAIN}_{self._cod_incasare}_an_curent"
 
     def _get_current_year_monthly_values(self) -> dict[int, dict]:
-        current_year = datetime.now().year
+        current_year = dt_util.now().year
         monthly_values: dict[int, dict] = {}
         if self.coordinator.data:
             graphic_consumption_data = self.coordinator.data.get("graphic_consumption", {})
             if isinstance(graphic_consumption_data, dict) and "consumption" in graphic_consumption_data:
                 for item in graphic_consumption_data["consumption"]:
-                    year = item.get("year")
-                    month = item.get("month")
+                    raw_year = item.get("year")
+                    raw_month = item.get("month")
                     consumption_value = item.get("consumptionValue")
                     consumption_day_value = item.get("consumptionValueDayValue")
+                    try:
+                        year = int(raw_year)
+                        month = int(raw_month)
+                    except (TypeError, ValueError):
+                        continue
                     if (
                         year == current_year
-                        and month
                         and consumption_value is not None
                         and consumption_day_value is not None
                     ):
