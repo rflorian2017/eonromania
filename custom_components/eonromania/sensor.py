@@ -1404,7 +1404,7 @@ class AnCurentSensor(EonRomaniaEntity):
 
     _attr_translation_key = "an_curent"
 
-    def __init__(self, coordinator, config_entry):
+    def __init__(self, coordinator, config_entry, monthly_values):
         super().__init__(coordinator, config_entry)
         um = coordinator.data.get("um", "m3") if coordinator.data else "m3"
         is_gaz = um.lower().startswith("m")
@@ -1412,42 +1412,14 @@ class AnCurentSensor(EonRomaniaEntity):
         self._attr_icon = "mdi:chart-bar" if is_gaz else "mdi:lightning-bolt"
         self._attr_unique_id = f"{DOMAIN}_an_curent_{self._cod_incasare}"
         self._custom_entity_id = f"sensor.{DOMAIN}_{self._cod_incasare}_an_curent"
-
-    def _get_current_year_monthly_values(self) -> dict[int, dict]:
-        current_year = dt_util.now().year
-        monthly_values: dict[int, dict] = {}
-        if self.coordinator.data:
-            graphic_consumption_data = self.coordinator.data.get("graphic_consumption", {})
-            if isinstance(graphic_consumption_data, dict) and "consumption" in graphic_consumption_data:
-                for item in graphic_consumption_data["consumption"]:
-                    raw_year = item.get("year")
-                    raw_month = item.get("month")
-                    consumption_value = item.get("consumptionValue")
-                    consumption_day_value = item.get("consumptionValueDayValue")
-                    try:
-                        year = int(raw_year)
-                        month = int(raw_month)
-                    except (TypeError, ValueError):
-                        continue
-                    if (
-                        year == current_year
-                        and consumption_value is not None
-                        and consumption_day_value is not None
-                    ):
-                        monthly_values[month] = {
-                            "consumptionValue": consumption_value,
-                            "consumptionValueDayValue": consumption_day_value,
-                        }
-        return monthly_values
+        self._year = dt_util.now().year
+        self._monthly_values = monthly_values        
 
     @property
     def native_value(self):
         if not self._license_valid:
             return None
-        monthly_values = self._get_current_year_monthly_values()
-        if not monthly_values:
-            return None
-        total = sum(v["consumptionValue"] for v in monthly_values.values())
+        total = sum(v["consumptionValue"] for v in self._monthly_values.values())
         return round(total, 2)
 
     @property
@@ -1467,23 +1439,21 @@ class AnCurentSensor(EonRomaniaEntity):
     def extra_state_attributes(self):
         if not self._license_valid:
             return {"licență": "necesară"}
-        monthly_values = self._get_current_year_monthly_values()
         unit = self.coordinator.data.get("um", "m3") if self.coordinator.data else "m3"
-        attributes: dict[str, Any] = {"attribution": ATTRIBUTION}
-        if monthly_values:
-            attributes.update(
-                {
-                    f"Consum lunar {MONTHS_NUM_RO.get(month, 'necunoscut')}": f"{format_number_ro(value['consumptionValue'])} {unit}"
-                    for month, value in sorted(monthly_values.items())
-                }
-            )
-            attributes["────"] = ""
-            attributes.update(
-                {
-                    f"Consum mediu zilnic în {MONTHS_NUM_RO.get(month, 'necunoscut')}": f"{format_number_ro(value['consumptionValueDayValue'])} {unit}"
-                    for month, value in sorted(monthly_values.items())
-                }
-            )
+        attributes = {"attribution": ATTRIBUTION}
+        attributes.update(
+            {
+                f"Consum lunar {MONTHS_NUM_RO.get(int(month), 'necunoscut')}": f"{format_number_ro(value['consumptionValue'])} {unit}"
+                for month, value in sorted(self._monthly_values.items(), key=lambda item: int(item[0]))
+            }
+        )
+        attributes["────"] = ""
+        attributes.update(
+            {
+                f"Consum mediu zilnic în {MONTHS_NUM_RO.get(int(month), 'necunoscut')}": f"{format_number_ro(value['consumptionValueDayValue'])} {unit}"
+                for month, value in sorted(self._monthly_values.items(), key=lambda item: int(item[0]))
+            }
+        )
         return attributes
 
 
